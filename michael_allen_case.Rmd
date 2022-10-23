@@ -1,0 +1,95 @@
+---
+title: "Case Report"
+author: "Sarah Forrest"
+date: "October 23, 2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+library(tidyverse)
+library(dplyr)
+library(fastDummies)
+library(factoextra)
+```
+
+```{r}
+# Read in data & simplify dataset to variables if interest
+GBM_patient_df = 
+  read_csv("data/GBM patient data.csv") %>%
+  janitor::clean_names() %>%
+  mutate(age = 2022 - year_of_birth) %>% # Create variable for subjects current age
+  select(-country, -md_id, -patient_id, -regimen_in_1st_line_other, -regimen_in_2nd_line_other, -year_of_birth, -comorbidity_other_specify_28, -comorbidity_other_specify_29)
+
+# Replace missing values in the dataset with NA
+GBM_patient_df[GBM_patient_df == "999"] <- NA
+GBM_patient_df[GBM_patient_df == "9"] <- NA
+
+# Restrict dataframe for cluster analysis to variables with minimal missing data and 
+GBM_patient_ca_df =
+  GBM_patient_df %>%
+  select(line_of_therapy, age, age_at_diagnosis:comorbidity_none, regimen_in_1st_line)
+# Remove rows with NA values
+GBM_patient_ca_df = GBM_patient_ca_df[complete.cases(GBM_patient_ca_df), ]
+
+# Turn all character variables to numeric using dummy variable coding
+# Dataframe with numeric variables only
+numeric_df = 
+  GBM_patient_ca_df %>%
+  select_if(is.numeric)
+
+# Dataframe with character variables only - transform  to numeric/dummy variables
+char_df = 
+  GBM_patient_ca_df %>%
+  select_if(is.character) %>%
+  dummy_cols(remove_most_frequent_dummy = TRUE) %>% # Most frequent = reference group
+  janitor::clean_names() %>%
+  select(gender_female:regimen_in_1st_line_other)
+
+# Finalize dataset for cluster analysis (containing only numeric variables)
+ca_df = cbind(numeric_df, char_df)
+
+# Scale the dataset
+ca_df[, 1:42] = scale(ca_df[, 1:42])
+
+# Determine the # of segments using the "elbow" method rule of thumb
+fviz_nbclust(ca_df, kmeans, method = "wss") + # Weighted sum of squares method
+labs(subtitle = "Elbow Method Analysis")
+
+# Cluster
+clusters = kmeans(ca_df, centers = 9, iter.max = 10)
+clusters$centers
+crite.csv(clusters$centers, file = "clusters.csv")
+data___ = cbind(data____, clusters$cluster)
+
+
+
+
+
+# Look at variable types
+summary(GBM_patient_df)
+
+
+
+```
+
+Adequate caretaker support
+travel time to office
+primary insurance
+ecog at 2nd line
+mgmt methylated
+egfr mutated
+idh1 idh2 mutated
+pd l1 overexpressed
+percent tumor mass resected
+regimen in 2nd line
+
+
+
+
+
+
+
