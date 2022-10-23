@@ -1,10 +1,10 @@
 ---
-title: "Case Report"
+title: "Glioblastoma Multiforme (GBM) Case Report"
 author: "Sarah Forrest"
 date: "October 23, 2022"
-output: pdf_document
+output: html_document
 ---
-
+ 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -14,56 +14,95 @@ library(tidyverse)
 library(dplyr)
 library(fastDummies)
 library(factoextra)
+library(patchwork)
 ```
 
+# Background and Introduction
+  ECOG = patients level of functioning
+
+ECOG @ 1st line & ecog @2nd line(
+ 0 = fully active
+ 4 = disabled
+ 
+Patients with methylated MGMT showed better survival compared to unmethylated MGMT EGFR mutated
+
+
 ```{r}
-# Read in data & simplify dataset to variables if interest
+# Read in and clean data
 GBM_patient_df = 
   read_csv("data/GBM patient data.csv") %>%
   janitor::clean_names() %>%
   mutate(age = 2022 - year_of_birth) %>% # Create variable for subjects current age
-  select(-country, -md_id, -patient_id, -regimen_in_1st_line_other, -regimen_in_2nd_line_other, -year_of_birth, -comorbidity_other_specify_28, -comorbidity_other_specify_29)
+  select(md_id:line_of_therapy, age, everything(), -country,-year_of_birth)
 
 # Replace missing values in the dataset with NA
 GBM_patient_df[GBM_patient_df == "999"] <- NA
 GBM_patient_df[GBM_patient_df == "9"] <- NA
+```
 
-# Restrict dataframe for cluster analysis to variables with minimal missing data and 
-GBM_patient_ca_df =
+```{r}
+# Create separate datasets for patients receiving 1 line and 2 lines of treatment
+oneline_df = 
   GBM_patient_df %>%
-  select(line_of_therapy, age, age_at_diagnosis:comorbidity_none, regimen_in_1st_line)
-# Remove rows with NA values
-GBM_patient_ca_df = GBM_patient_ca_df[complete.cases(GBM_patient_ca_df), ]
+  filter(line_of_therapy == 1) %>%
+  select(-line_of_therapy, -ecog_at_2nd_line, -regimen_in_2nd_line, -regimen_in_2nd_line_other) # Remove 2nd line variables
 
-# Turn all character variables to numeric using dummy variable coding
-# Dataframe with numeric variables only
-numeric_df = 
-  GBM_patient_ca_df %>%
+twoline_df = 
+  GBM_patient_df %>%
+  filter(line_of_therapy == 2) %>%
+  select(-line_of_therapy, )
+```
+
+# Dataset Information
+
+The dataset used in analysis for this report contains data on `r nrow(GBM_patient_df)` patients treated by 150 different medical doctors. `r (nrow(oneline_df)/nrow(GBM_patient_df))*100`% of patients (N = `r nrow(oneline_df)` ) in the dataset receive one line of treatment for GBM and `r (nrow(twoline_df)/nrow(GBM_patient_df))*100`% of patients (N = `r nrow(twoline_df)`) receive two lines of treatment.
+
+```{r}
+# Restrict dataframe for cluster analysis to variables of interest with minimal missing data
+ca_oneline_df =
+  oneline_df %>%
+  select(age:primary_insurance, comorbidity_none, ecog_at_1st_line, regimen_in_1st_line)
+# Remove rows with NA values
+ca_oneline_df = ca_oneline_df[complete.cases(ca_oneline_df), ]
+
+# Create a dataframe for cluster analysis of entirely numeric variables
+# Step 1: create subset of dataframe with numeric variables only
+numeric_oneline_df = 
+  ca_oneline_df %>%
   select_if(is.numeric)
 
-# Dataframe with character variables only - transform  to numeric/dummy variables
-char_df = 
-  GBM_patient_ca_df %>%
+# Step 2: create subset of dataframe with character variables only and transform them to numeric using dummy variable coding 
+char_oneline_df = 
+  ca_oneline_df %>%
   select_if(is.character) %>%
   dummy_cols(remove_most_frequent_dummy = TRUE) %>% # Most frequent = reference group
   janitor::clean_names() %>%
-  select(gender_female:regimen_in_1st_line_other)
+  select(-(gender:regimen_in_1st_line)) # Select only the numeric variables
 
-# Finalize dataset for cluster analysis (containing only numeric variables)
-ca_df = cbind(numeric_df, char_df)
+# Finalize dataset for cluster analysis (containing only numeric variables) by combining the numeric and formerly character datasets
+ca_oneline_df = cbind(numeric_oneline_df, char_oneline_df) 
 
 # Scale the dataset
-ca_df[, 1:42] = scale(ca_df[, 1:42])
+ca_oneline_df[, 1:24] = scale(ca_oneline_df[, 1:24])
 
-# Determine the # of segments using the "elbow" method rule of thumb
-fviz_nbclust(ca_df, kmeans, method = "wss") + # Weighted sum of squares method
-labs(subtitle = "Elbow Method Analysis")
+# Determine the # of segments using the "elbow" method
+oneline_elbow = fviz_nbclust(ca_oneline_df, kmeans, method = "wss") + labs(subtitle = "Elbow Method Analysis") # Weighted sum of squares method
+
+# Determine the # of segments using the "silhouette"
+oneline_silhouette = fviz_nbclust(ca_oneline_df, kmeans, method = "silhouette") + labs(subtitle = "Silhouette Method Analysis")
+
+elbow +  silhouette
 
 # Cluster
-clusters = kmeans(ca_df, centers = 9, iter.max = 10)
-clusters$centers
-crite.csv(clusters$centers, file = "clusters.csv")
+oneline_clusters = kmeans(ca_oneline_df, centers = 9, iter.max = 10)
+oneline_clusters$centers
+write.csv(oneline_clusters$centers, file = "oneline_clusters.csv")
+
+```
+
 data___ = cbind(data____, clusters$cluster)
+
+# Demographic variables (age, gender race), treatment variables (line of therapy and age at diagnosis), psychographic variables (level of involvement, goals), other (caretaker support, travel time to medical center, insurance)
 
 
 
@@ -73,7 +112,7 @@ data___ = cbind(data____, clusters$cluster)
 summary(GBM_patient_df)
 
 
-
+-md_id, -patient_id, -regimen_in_1st_line_other, -regimen_in_2nd_line_other, -year_of_birth, -comorbidity_other_specify_28, -comorbidity_other_specify_29)
 ```
 
 Adequate caretaker support
