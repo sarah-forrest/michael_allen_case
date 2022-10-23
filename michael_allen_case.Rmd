@@ -1,33 +1,40 @@
 ---
-title: "Glioblastoma Multiforme (GBM) Case Report"
+title: "Glioblastoma Multiforme (GBM) Case Report for Specialty Oncology Client"
 author: "Sarah Forrest"
-date: "October 23, 2022"
-output: html_document
+header-includes: |
+    \usepackage{fancyhdr}
+    \pagestyle{fancy}
+    \fancyhead[CO,CE]{Sarah Forrest}
+output: pdf_document
 ---
- 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r load packages}
+```{r load packages, echo=FALSE, message=FALSE}
 library(tidyverse)
 library(dplyr)
 library(fastDummies)
 library(factoextra)
 library(patchwork)
+library(table1)
+library(GGally)
+library(aod)
 ```
+# Objective
+This report aims to use Glioblastoma Multiforme (GBM) patient data to identify clinically meaningful patient sub-segments that are currently treated differently and may present distinct opportunities for our specialty oncology client to enter the GBM market.
 
 # Background and Introduction
-  ECOG = patients level of functioning
+The 2022 American Association of Neurological Surgeons (AANS) defines GBM as a fast-growing and aggressive brain tumor. It can cause devastating symptoms ranging from persistent headaches and blurred vision, to changes in personality and seizures. If untreated, GBM can result in death in six months or less; hence, effective therapeutics are imperative to prolong the lives of patients and improve the quality of remaining life (AANS).
 
-ECOG @ 1st line & ecog @2nd line(
- 0 = fully active
- 4 = disabled
- 
-Patients with methylated MGMT showed better survival compared to unmethylated MGMT EGFR mutated
+Currently available treatment options for GBM include surgery, followed by radiation and chemotherapy. GMB surgical procedures aim to reduce the amount of tumor tissue without harming the surrounding brain tissue. After surgery, some patients begin radiation therapy. Typically, 10-30 sessions of radiation are delivered to the tumor site to kill the remaining tumor cells. Radiation provides most patients with improved outcomes and longer survival rates compared to surgery alone. Some patients may also undergo chemotherapy to kill the remaining tumor cells. Chemotherapy with the drugs temozolomide or Lomustine are the current standard of treatment for GBM (AANS).
 
+Additionally, the following molecular alterations provide therapeutic targets for GMB (AANS): 
 
-```{r}
+* IDH mutation
+* EGFR mutation
+
+```{r echo=FALSE, message=FALSE}
 # Read in and clean data
 GBM_patient_df = 
   read_csv("data/GBM patient data.csv") %>%
@@ -40,7 +47,7 @@ GBM_patient_df[GBM_patient_df == "999"] <- NA
 GBM_patient_df[GBM_patient_df == "9"] <- NA
 ```
 
-```{r}
+```{r echo=FALSE, message=FALSE}
 # Create separate datasets for patients receiving 1 line and 2 lines of treatment
 oneline_df = 
   GBM_patient_df %>%
@@ -50,83 +57,146 @@ oneline_df =
 twoline_df = 
   GBM_patient_df %>%
   filter(line_of_therapy == 2) %>%
-  select(-line_of_therapy, )
+  select(-line_of_therapy, ) %>%
+  mutate(ecog_difference = ecog_at_1st_line - ecog_at_2nd_line) %>%
+  mutate(ecog_worsen = case_when(ecog_difference < 0 ~ 1,
+            TRUE ~ 0)) %>%
+  mutate(ecog_improve = case_when(ecog_difference > 0 ~ 1,
+            TRUE ~ 0))
 ```
 
 # Dataset Information
+The dataset used in this analysis contains data on `r nrow(GBM_patient_df)` patients treated by 150 different medical doctors. `r (nrow(oneline_df)/nrow(GBM_patient_df))*100`% of patients (N = `r nrow(oneline_df)`) in the dataset have received one line of treatment for GBM and `r (nrow(twoline_df)/nrow(GBM_patient_df))*100`% of patients (N = `r nrow(twoline_df)`) have received two lines of treatment. Table 1 contains descriptive statistics of the demographic composition of the entire dataset first, then stratified by lines of treatment. 
 
-The dataset used in analysis for this report contains data on `r nrow(GBM_patient_df)` patients treated by 150 different medical doctors. `r (nrow(oneline_df)/nrow(GBM_patient_df))*100`% of patients (N = `r nrow(oneline_df)` ) in the dataset receive one line of treatment for GBM and `r (nrow(twoline_df)/nrow(GBM_patient_df))*100`% of patients (N = `r nrow(twoline_df)`) receive two lines of treatment.
+In addition to demographics, the dataset also contains information on patient access to caretaker support, their doctor's office, as well as their insurance plan. The dataset also contains patient psychographics, such as the patient's level of involvement in GBM and treatment goals, as well as information on comorbidities and methylation/mutation status of prognostic and diagnostic targets. Finally, the dataset contains treatment regimen information and Eastern Cooperative Oncology Group (ECOG) scores, a measure of the patient's level of functioning at the 1st and 2nd lines of treatment (ECOG-acrin cancer research group, 2022). 
 
-```{r}
+The dataset was divided into 2 segments: the first containing data on patients who received 1 line of treatment for GBM and the second containing data on patients who received 2 lines of treatment. 
+
+Note: The data was cleaned for analysis by replacing values indicating missing data with "NA"
+
+## Table 1. Demographic Descriptive Statistics
+```{r echo=FALSE, message=FALSE}
+table1_df =
+  GBM_patient_df %>%
+  select(line_of_therapy:race)
+
+labels_T1 <- list(
+  variables = list(age = "Age (years)",
+                 age_at_diagnosis = "Age at Diagnosis", 
+                 gender = "Gender",
+                 race = "Race"),
+  groups = list("", "Line of Therapy"))
+
+strata_T1 <- c(list(Total = GBM_patient_df), split(GBM_patient_df, 
+  GBM_patient_df$line_of_therapy))
+
+my.render.cont <- function(x) {
+  with(stats.apply.rounding(stats.default(x), digits = 2), c("", 
+  "Mean (SD)" = sprintf("%s (&plusmn; %s)", MEAN, SD)))}
+my.render.cat <- function(x) { c("", sapply(stats.default(x), function(y) 
+  with(y,sprintf("%d (%0.0f%%)", FREQ, PCT))))}
+
+table1(strata_T1, labels_T1, groupspan = c(1, 2),
+  render.continuous = my.render.cont, render.categorical = my.render.cat)
+```
+
+# Analysis
+## Clinically Meaningful Patient Segmentation
+Guralnik et al. defines clinically meaningful change as a change that has clinical or practical importance and has an impact on an individual's health status or quality of life (Guralnik et al, 2020). In the dataset for patients who received two lines of treatment, there is a variable for the ECOG score at the 1st and 2nd lines of treatment. The ECOG score describes a patient’s level of functioning in terms of their ability to care for themselves, daily activity, and physical ability (ECOG-acrin cancer research group, 2022). A score of 0 indicates that the patient is fully active, and able to carry on all pre-disease performance without restriction. A score of 4 indicates that the patient is completely disabled and is totally confined to a bed or chair (ECOG-acrin cancer research group, 2022). Therefore, a treatment that changes a patient's ECOG score from a higher value to a lower value can provide immense improvement in patient quality of life. The difference in ECOG scores before and after treatment provides an indicator for *clinically meaningful change*.
+
+To calculate the measure of clinically meaningful change, the difference in each patient's ECOG scores were calculated by subtracting the ECOG score at 2nd line of treatment from the ECOG score at 1st line of treatment. A difference less than 0 indicates that ECOG score worsened after first line of treatment whereas a difference greater than 0 indicates that ECOG score improved after receiving the first line of treatment.
+
+To determine the optimal number of clusters for K-means clustering, the elbow and silhouette methods were used based on patient demographics, psychographics (attitudes and goals related to GBM treatment), and ECOG score difference. As seen in Figure 1, these methods indicated that the optimal number of clusters in this dataset was 10.
+
+### Figure 1. Optimal Number of Clusters Results
+```{r echo=FALSE, message=FALSE}
 # Restrict dataframe for cluster analysis to variables of interest with minimal missing data
-ca_oneline_df =
-  oneline_df %>%
-  select(age:primary_insurance, comorbidity_none, ecog_at_1st_line, regimen_in_1st_line)
+ca_twoline_df =
+  twoline_df %>%
+  select(age, gender:race, patients_level_of_involvement_in_gbm, ecog_difference)
 # Remove rows with NA values
-ca_oneline_df = ca_oneline_df[complete.cases(ca_oneline_df), ]
+ca_twoline_df = ca_twoline_df[complete.cases(ca_twoline_df), ]
 
 # Create a dataframe for cluster analysis of entirely numeric variables
 # Step 1: create subset of dataframe with numeric variables only
-numeric_oneline_df = 
-  ca_oneline_df %>%
+numeric_twoline_df = 
+  ca_twoline_df %>%
   select_if(is.numeric)
 
 # Step 2: create subset of dataframe with character variables only and transform them to numeric using dummy variable coding 
-char_oneline_df = 
-  ca_oneline_df %>%
+char_twoline_df = 
+  ca_twoline_df %>%
   select_if(is.character) %>%
-  dummy_cols(remove_most_frequent_dummy = TRUE) %>% # Most frequent = reference group
+  dummy_cols(remove_most_frequent_dummy = FALSE) %>%
   janitor::clean_names() %>%
-  select(-(gender:regimen_in_1st_line)) # Select only the numeric variables
+  select(-(gender:patients_level_of_involvement_in_gbm)) # Select only the numeric variables
 
 # Finalize dataset for cluster analysis (containing only numeric variables) by combining the numeric and formerly character datasets
-ca_oneline_df = cbind(numeric_oneline_df, char_oneline_df) 
+ca_twoline_df = cbind(numeric_twoline_df, char_twoline_df) 
 
 # Scale the dataset
-ca_oneline_df[, 1:24] = scale(ca_oneline_df[, 1:24])
+ca_twoline_df[, 1:12] = scale(ca_twoline_df[, 1:12])
 
 # Determine the # of segments using the "elbow" method
-oneline_elbow = fviz_nbclust(ca_oneline_df, kmeans, method = "wss") + labs(subtitle = "Elbow Method Analysis") # Weighted sum of squares method
+twoline_elbow = fviz_nbclust(ca_twoline_df, kmeans, method = "wss") + labs(subtitle = "Elbow Method Analysis") # Weighted sum of squares method
 
 # Determine the # of segments using the "silhouette"
-oneline_silhouette = fviz_nbclust(ca_oneline_df, kmeans, method = "silhouette") + labs(subtitle = "Silhouette Method Analysis")
+twoline_silhouette = fviz_nbclust(ca_twoline_df, kmeans, method = "silhouette") + labs(subtitle = "Silhouette Method Analysis")
 
-elbow +  silhouette
+twoline_elbow +  twoline_silhouette
 
 # Cluster
-oneline_clusters = kmeans(ca_oneline_df, centers = 9, iter.max = 10)
-oneline_clusters$centers
-write.csv(oneline_clusters$centers, file = "oneline_clusters.csv")
+twoline_clusters = kmeans(ca_twoline_df, centers = 10, iter.max = 10)
+# write.csv(twoline_clusters$centers, file = "twoline_clusters.csv")
+```
+
+### Table 2. K-Means Results
+```{r echo=FALSE}
+table = twoline_clusters$centers
+
+table1 = table[, 1:6]
+table2 = table[, 7:9]
+
+table1 %>%
+  knitr::kable(digits = 2)
+table2 %>%
+  knitr::kable(digits = 2)
 
 ```
 
-data___ = cbind(data____, clusters$cluster)
+10 specific patient segment clusters were detected using K-means. Noting "extreme" values outside of the range of -0.35 to 0.35, the 10 patient clusters in the dataset can be characterized in the following way:
 
-# Demographic variables (age, gender race), treatment variables (line of therapy and age at diagnosis), psychographic variables (level of involvement, goals), other (caretaker support, travel time to medical center, insurance)
+1. White male patients with average involvement in their treatment
+2. Older Asian female patients
+3. Female patients with average involvement in their treatment
+4. Other race patients with passive involvement in their treatment
+5. Younger white male patients with active involvement in their treatment
+6. Older white male patients with active involvement in their treatment
+7. Older patients with passive involvement in their treatment
+8. Black male patients with average involvement in their treatment
+9. Younger white female patients with active involvement in their treatment
+10. Hispanic/Latino patients
 
+Patient clusters who experienced a clinically meaningful improvement in their level of functioning (ECOG difference > 0) after their first line of treatment were patient subsegments in clusters 2, 4, 5 and 8. These clusters represent segments of patients with a met therapeutic need because their level of functioning and quality of life improved after their first line of treatment. Therefore, these patient subsegments should not be the target of our client.
 
+Patient clusters who experienced a decrease in their level of functioning (ECOG difference < 0) after their first line of treatment were patient subsegments in clusters 3, 6, and 10. These clusters represent segments of patients in the dataset with an unmet therapeutic need because their level of functioning and quality of life worsened after their first line of treatment. 
 
+# Recommendation
+Our client should address unmet need in the GBM market by targeting the following patient subsegments:
 
+* Female patients with average involvement in their treatment
+* Older white male patients with active involvement in their treatment
+* Hispanic/Latino patients
 
-# Look at variable types
-summary(GBM_patient_df)
+Unmet clinical need within these segments represents a distinct opportunity for our client to target with their therapeutic development, because the therapeutic needs of these patient subsegments are not being met by their current treatment.
 
+# References
 
--md_id, -patient_id, -regimen_in_1st_line_other, -regimen_in_2nd_line_other, -year_of_birth, -comorbidity_other_specify_28, -comorbidity_other_specify_29)
-```
+Glioblastoma multiforme. AANS. (n.d.). Retrieved October 23, 2022, from https://www.aans.org/en/Patients/Neurosurgical-Conditions-and-Treatments/Glioblastoma-Multiforme 
 
-Adequate caretaker support
-travel time to office
-primary insurance
-ecog at 2nd line
-mgmt methylated
-egfr mutated
-idh1 idh2 mutated
-pd l1 overexpressed
-percent tumor mass resected
-regimen in 2nd line
+ECOG performance status scale - ECOG-acrin cancer research group. ECOG. (2022, June 17). Retrieved October 23, 2022, from https://ecog-acrin.org/resources/ecog-performance-status/ 
 
-
+Guralnik, J., Bandeen-Roche, K., Bhasin, S.A.R. et al. Clinically Meaningful Change for Physical Performance: Perspectives of the ICFSR Task Force. J Frailty Aging 9, 9–13 (2020). https://doi.org/10.14283/jfa.2019.33
 
 
 
